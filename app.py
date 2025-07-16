@@ -83,34 +83,30 @@ if 'model' not in st.session_state:
 @st.cache_resource
 def load_model():
     """Load XGBoost model"""
-    # 获取当前文件所在目录
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # 构建到models文件夹的路径
-    model_path = os.path.join(current_dir, 'models', 'best_model_Clinical_iTED.json')
-
-    # 调试：打印路径信息
-    print(f"Looking for model at: {model_path}")
-    print(f"Current directory: {current_dir}")
-    print(f"Files in current directory: {os.listdir(current_dir)}")
-
-    # 检查models文件夹是否存在
-    models_dir = os.path.join(current_dir, 'models')
-    if os.path.exists(models_dir):
-        print(f"Files in models directory: {os.listdir(models_dir)}")
-
-    try:
-        if os.path.exists(model_path):
-            model = xgb.XGBClassifier()
-            model.load_model(model_path)
-            print("Model loaded successfully!")
-            return model, True
-        else:
-            print(f"Model file not found at: {model_path}")
-            return None, False
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        return None, False
+    import os
+    
+    # 尝试多个可能的路径
+    possible_paths = [
+        'models/best_model_Clinical_iTED.json',
+        './models/best_model_Clinical_iTED.json',
+        '/mount/src/thyca-clinical-ited/models/best_model_Clinical_iTED.json',  # Streamlit Cloud 特定路径
+        os.path.join(os.getcwd(), 'models', 'best_model_Clinical_iTED.json'),
+    ]
+    
+    for path in possible_paths:
+        st.sidebar.write(f"尝试路径: {path}")
+        st.sidebar.write(f"存在: {os.path.exists(path)}")
+        
+        if os.path.exists(path):
+            try:
+                model = xgb.XGBClassifier()
+                model.load_model(path)
+                st.sidebar.success(f"从 {path} 加载成功!")
+                return model, True
+            except Exception as e:
+                st.sidebar.error(f"加载失败 {path}: {e}")
+    
+    return None, False
 
 def encode_categorical_features(features_dict):
     """Encode categorical features"""
