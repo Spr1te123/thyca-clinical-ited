@@ -293,24 +293,17 @@ def display_shap_analysis(model, feature_values, features_df, probability):
                 else:
                     feature_names.append(feature)
             
-            # 尝试使用matplotlib显示力图
-            try:
-                st.subheader("SHAP力图")
-                fig, ax = plt.subplots(figsize=(15, 5))
-                shap.force_plot(
-                    expected_value,
-                    shap_values[0],
-                    features_df.iloc[0],
-                    feature_names=feature_names,
-                    matplotlib=True,
-                    show=False,
-                    ax=ax
-                )
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close()
-            except Exception as e:
-                st.warning(f"无法生成力图: {str(e)}")
+            # 使用更稳定的SHAP可视化方法
+            st.subheader("SHAP分析结果")
+            
+            # 显示基本信息
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("基准风险", f"{expected_value:.1%}")
+            with col2:
+                st.metric("SHAP贡献", f"{shap_values[0].sum():.3f}")
+            with col3:
+                st.metric("最终预测", f"{probability:.1%}")
             
             # 使用Plotly创建条形图
             shap_df = pd.DataFrame({
