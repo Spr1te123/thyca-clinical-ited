@@ -1,7 +1,7 @@
 """
 Thyroid Cancer Distant Metastasis Prediction System
 Based on Clinical+3D_ITHscore Model (19 features)
-With SHAP Visualization (No matplotlib)
+Minimal version without SHAP for Python 3.13 compatibility
 """
 import os
 import streamlit as st
@@ -11,7 +11,6 @@ import xgboost as xgb
 import joblib
 from datetime import datetime
 import json
-import shap
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -63,7 +62,6 @@ ALL_FEATURES = [
 if 'model' not in st.session_state:
     st.session_state.model = None
     st.session_state.model_loaded = False
-    st.session_state.explainer = None
 
 @st.cache_resource
 def load_model():
@@ -133,206 +131,45 @@ def encode_categorical_features(features_dict):
     return encoded
 
 def predict_risk(model, features_df):
-    """Predict risk using the model"""
+    """Predict risk using the model or demo calculation"""
     if model is not None:
         # Use real model for prediction
         probability = model.predict_proba(features_df)[0][1]
         return probability
     else:
-        # Demo mode - return a warning message
-        st.error("""
-        ⚠️ **Demo Mode Active**
+        # Demo mode - simple risk calculation based on known risk factors
+        risk_score = 0.135  # baseline prevalence
         
-        The actual XGBoost model is not loaded. To get accurate predictions:
-        1. Place the 'best_model_Clinical+3D_ITHscore.json' file in the app directory
-        2. Or embed the model as base64 string in the code
+        # Add risk based on features
+        if features_df['T_stage'].iloc[0] == 1:  # T3/4
+            risk_score += 0.15
+        if features_df['Number_of_metastatic_lymph_nodes'].iloc[0] > 5:
+            risk_score += 0.20
+        if features_df['Tumor_size'].iloc[0] == 2:  # >2cm
+            risk_score += 0.10
+        if features_df['Multifocal'].iloc[0] == 1:
+            risk_score += 0.08
+        if features_df['3D_ITHscore'].iloc[0] > 0.7:
+            risk_score += 0.12
+        if features_df['Sex'].iloc[0] == 1:  # Male
+            risk_score += 0.05
+        if features_df['Age'].iloc[0] > 55:
+            risk_score += 0.10
         
-        The model uses complex decision trees and feature interactions that cannot be 
-        accurately simulated with simple weights.
-        """)
-        
-        # Return the baseline prevalence from training data (13.5%)
-        return 0.135
-
-def display_shap_force_plot_plotly(explainer, features_df, feature_values, probability):
-    """使用Plotly显示SHAP力图"""
-    try:
-        # 计算SHAP值
-        shap_values = explainer.shap_values(features_df)
-        expected_value = explainer.expected_value
-        
-        # 如果是二分类，选择正类的SHAP值
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
-            expected_value = expected_value[1]
-        
-        # 创建特征名称映射
-        feature_names = []
-        for feature in ALL_FEATURES:
-            if feature in feature_values:
-                value = feature_values[feature]
-                feature_names.append(f"{feature}={value}")
-            else:
-                feature_names.append(feature)
-        
-        st.markdown("### 🎯 SHAP特征贡献分析")
-        st.markdown("展示各特征对预测结果的贡献度（红色=增加风险，蓝色=降低风险）")
-        
-        # 创建贡献度数据框
-        shap_df = pd.DataFrame({
-            '特征': feature_names,
-            'SHAP值': shap_values[0],
-            '特征值': features_df.iloc[0].values
-        })
-        
-        # 按SHAP值绝对值排序
-        shap_df['绝对SHAP值'] = abs(shap_df['SHAP值'])
-        shap_df = shap_df.sort_values('SHAP值')
-        
-        # 创建水平条形图使用Plotly
-        shap_df['颜色'] = shap_df['SHAP值'].apply(lambda x: '增加风险' if x > 0 else '降低风险')
-        
-        fig = go.Figure()
-        
-        # 添加条形
-        fig.add_trace(go.Bar(
-            y=shap_df['特征'],
-            x=shap_df['SHAP值'],
-            orientation='h',
-            marker=dict(
-                color=shap_df['SHAP值'],
-                colorscale=[[0, 'blue'], [0.5, 'white'], [1, 'red']],
-                cmin=-max(abs(shap_df['SHAP值'])),
-                cmax=max(abs(shap_df['SHAP值'])),
-                showscale=True,
-                colorbar=dict(title="SHAP值")
-            ),
-            text=shap_df['SHAP值'].round(3),
-            textposition='outside',
-            hovertemplate='<b>%{y}</b><br>SHAP值: %{x:.3f}<extra></extra>'
-        ))
-        
-        # 更新布局
-        fig.update_layout(
-            title='特征对远处转移风险预测的贡献度',
-            xaxis_title='SHAP值（对预测的贡献）',
-            yaxis_title='特征',
-            height=600,
-            showlegend=False,
-            xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor='black'),
-            plot_bgcolor='white'
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 显示力图式的可视化
-        st.markdown("#### 📊 预测路径分析")
-        
-        # 创建累积SHAP值
-        shap_sorted = shap_df.sort_values('绝对SHAP值', ascending=False)
-        shap_sorted['累积SHAP'] = shap_sorted['SHAP值'].cumsum()
-        shap_sorted['预测值'] = expected_value + shap_sorted['累积SHAP']
-        
-        # 创建瀑布图
-        fig2 = go.Figure()
-        
-        # 基准值
-        fig2.add_trace(go.Scatter(
-            x=[0],
-            y=[expected_value],
-            mode='markers+text',
-            marker=dict(size=15, color='gray'),
-            text=[f'基准: {expected_value:.1%}'],
-            textposition='top center',
-            name='基准风险',
-            showlegend=False
-        ))
-        
-        # 添加每个特征的贡献
-        x_pos = 1
-        for idx, row in shap_sorted.head(10).iterrows():
-            color = 'red' if row['SHAP值'] > 0 else 'blue'
-            fig2.add_shape(
-                type="rect",
-                x0=x_pos-0.4, x1=x_pos+0.4,
-                y0=row['预测值'] - row['SHAP值'], y1=row['预测值'],
-                fillcolor=color,
-                opacity=0.5,
-                line=dict(width=0)
-            )
-            fig2.add_annotation(
-                x=x_pos,
-                y=row['预测值'],
-                text=row['特征'],
-                showarrow=False,
-                textangle=-45,
-                font=dict(size=10)
-            )
-            x_pos += 1
-        
-        # 最终预测
-        fig2.add_trace(go.Scatter(
-            x=[x_pos],
-            y=[probability],
-            mode='markers+text',
-            marker=dict(size=15, color='darkred'),
-            text=[f'最终: {probability:.1%}'],
-            textposition='top center',
-            name='最终预测',
-            showlegend=False
-        ))
-        
-        fig2.update_layout(
-            title='从基准风险到最终预测的路径',
-            xaxis=dict(showticklabels=False, title=''),
-            yaxis=dict(title='预测概率', tickformat='.0%'),
-            height=400,
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig2, use_container_width=True)
-        
-        # 显示详细信息
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**🔴 增加风险的特征（前5个）：**")
-            risk_features = shap_df[shap_df['SHAP值'] > 0].nlargest(5, '绝对SHAP值')
-            for _, row in risk_features.iterrows():
-                st.write(f"• {row['特征']}: +{row['SHAP值']:.3f}")
-        
-        with col2:
-            st.markdown("**🔵 降低风险的特征（前5个）：**")
-            protective_features = shap_df[shap_df['SHAP值'] < 0].nlargest(5, '绝对SHAP值')
-            for _, row in protective_features.iterrows():
-                st.write(f"• {row['特征']}: {row['SHAP值']:.3f}")
-        
-        # 显示基准风险和实际预测
-        st.info(f"""
-        **模型预测解释：**
-        - 基准风险（平均患者）: {expected_value:.1%}
-        - SHAP值总和: {shap_values[0].sum():.3f}
-        - 最终预测概率: {probability:.1%}
-        
-        *注：最终概率 = sigmoid(基准值 + SHAP值总和)*
-        """)
-        
-    except Exception as e:
-        st.error(f"SHAP可视化出错: {e}")
+        # Ensure probability is between 0 and 1
+        probability = min(max(risk_score, 0.0), 1.0)
+        return probability
 
 # Main interface
 st.title("🏥 Thyroid Cancer Distant Metastasis Prediction System")
-st.markdown("### Clinical+3D_ITHscore Model (19 Features) with SHAP Analysis")
+st.markdown("### Clinical+3D_ITHscore Model (19 Features)")
 
 # Load model
 model, loaded = load_model()
-if loaded and model is not None:
+if loaded:
     st.success("✅ Model loaded successfully")
-    # 初始化SHAP解释器
-    st.session_state.explainer = initialize_shap_explainer(model)
 else:
-    st.warning("⚠️ Using demo mode (model file not found)")
-    st.session_state.explainer = None
+    st.warning("⚠️ Using demo mode - for demonstration purposes only")
 
 # Instructions
 with st.expander("📋 Instructions", expanded=False):
@@ -347,11 +184,6 @@ with st.expander("📋 Instructions", expanded=False):
     - Optimal Threshold: 0.10
     - Specificity: 96.7% (internal), 94.6% (external)
     - Sensitivity: 25.0% (internal), 53.3% (external)
-    
-    **SHAP Analysis:**
-    - 力图展示每个特征对预测的贡献
-    - 红色条表示增加风险，蓝色条表示降低风险
-    - 条的长度表示影响程度
     """)
 
 # Create input form
@@ -543,19 +375,9 @@ if predict_button:
     st.markdown("### 💡 Clinical Recommendations")
     st.markdown(recommendation)
     
-    # SHAP可视化
-    if st.session_state.get('explainer') is not None:
-        st.markdown("---")
-        display_shap_force_plot_plotly(
-            st.session_state.explainer, 
-            features_df, 
-            feature_values, 
-            probability
-        )
-    
-    # Feature contribution analysis (原有的简单分析作为补充)
+    # Feature contribution analysis (simple version)
     st.markdown("---")
-    st.markdown("### 🔍 Risk Factor Analysis (Rule-based)")
+    st.markdown("### 🔍 Risk Factor Analysis")
     
     # Create a simple risk factor summary
     risk_factors = []
@@ -671,6 +493,8 @@ Model Performance:
 - External validation AUC-ROC: 0.856
 - Optimal threshold: 0.10
 
+Note: Currently running in demo mode. For production use, please load the actual trained model.
+
 Physician signature: _____________
 Date: _____________
 """
@@ -688,7 +512,6 @@ with st.sidebar:
     st.markdown("### 📊 Model Information")
     st.info(f"""
     **Model Status:** {'Loaded' if loaded else 'Demo Mode'}
-    **SHAP Analysis:** {'Available' if st.session_state.explainer else 'Not Available'}
     **Model Type:** Clinical+3D_ITHscore
     **Total Features:** 19
     - Clinical: 18
@@ -738,23 +561,15 @@ with st.sidebar:
     2. Not a substitute for clinical judgment
     3. Based on limited training data
     4. Regular model updates recommended
-    """)
-    
-    st.markdown("### 🎯 SHAP Analysis")
-    st.success("""
-    SHAP (SHapley Additive exPlanations) 
-    提供了模型可解释性：
-    - 展示每个特征的贡献度
-    - 红色增加风险，蓝色降低风险
-    - 帮助理解模型决策过程
+    5. Currently in DEMO mode
     """)
 
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666;'>
-    <p>Thyroid Cancer Distant Metastasis Prediction System v3.0</p>
-    <p>Based on Clinical+3D_ITHscore XGBoost Model with SHAP Analysis</p>
+    <p>Thyroid Cancer Distant Metastasis Prediction System v2.0</p>
+    <p>Based on Clinical+3D_ITHscore XGBoost Model</p>
     <p>© 2025 | For Medical Research and Clinical Reference Only</p>
 </div>
 """, unsafe_allow_html=True)
