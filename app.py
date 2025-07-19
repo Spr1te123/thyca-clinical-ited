@@ -1,13 +1,7 @@
 """
-在app.py文件的最开头添加（在所有import语句之前）：
-"""
-import matplotlib
-matplotlib.use('Agg')  # 设置为非交互式后端
-
-"""
 Thyroid Cancer Distant Metastasis Prediction System
 Based on Clinical+3D_ITHscore Model (19 features)
-With SHAP Visualization
+With SHAP Visualization (No matplotlib)
 """
 import os
 import streamlit as st
@@ -18,10 +12,8 @@ import joblib
 from datetime import datetime
 import json
 import shap
-import matplotlib.pyplot as plt
-from streamlit.components.v1 import html
-
-# 继续原来的代码...
+import plotly.graph_objects as go
+import plotly.express as px
 
 # Page configuration
 st.set_page_config(
@@ -162,64 +154,29 @@ def predict_risk(model, features_df):
         # Return the baseline prevalence from training data (13.5%)
         return 0.135
 
-def generate_shap_force_plot(explainer, features_df, feature_values):
-    """生成SHAP力图"""
-    if explainer is None:
-        return None, None, None
-    
-    # 计算SHAP值
-    shap_values = explainer.shap_values(features_df)
-    
-    # 获取基准值（期望值）
-    expected_value = explainer.expected_value
-    
-    # 如果是二分类，选择正类的SHAP值
-    if isinstance(shap_values, list):
-        shap_values = shap_values[1]
-        expected_value = expected_value[1]
-    
-    # 创建特征名称映射，使用原始值而不是编码值
-    feature_names = []
-    for feature in ALL_FEATURES:
-        if feature in feature_values:
-            value = feature_values[feature]
-            feature_names.append(f"{feature}={value}")
-        else:
-            feature_names.append(feature)
-    
-    return shap_values, expected_value, feature_names
-
-def display_shap_force_plot(explainer, features_df, feature_values, probability):
-    """显示SHAP力图"""
+def display_shap_force_plot_plotly(explainer, features_df, feature_values, probability):
+    """使用Plotly显示SHAP力图"""
     try:
-        shap_values, expected_value, feature_names = generate_shap_force_plot(
-            explainer, features_df, feature_values
-        )
+        # 计算SHAP值
+        shap_values = explainer.shap_values(features_df)
+        expected_value = explainer.expected_value
         
-        if shap_values is None:
-            return
+        # 如果是二分类，选择正类的SHAP值
+        if isinstance(shap_values, list):
+            shap_values = shap_values[1]
+            expected_value = expected_value[1]
         
-        # 使用matplotlib后端
-        st.markdown("### 🎯 SHAP力图分析")
+        # 创建特征名称映射
+        feature_names = []
+        for feature in ALL_FEATURES:
+            if feature in feature_values:
+                value = feature_values[feature]
+                feature_names.append(f"{feature}={value}")
+            else:
+                feature_names.append(feature)
+        
+        st.markdown("### 🎯 SHAP特征贡献分析")
         st.markdown("展示各特征对预测结果的贡献度（红色=增加风险，蓝色=降低风险）")
-        
-        # 创建力图
-        fig, ax = plt.subplots(figsize=(20, 3))
-        shap.force_plot(
-            expected_value,
-            shap_values[0],
-            features_df.iloc[0],
-            feature_names=feature_names,
-            out_names="远处转移风险",
-            matplotlib=True,
-            show=False,
-            figsize=(20, 3)
-        )
-        st.pyplot(fig)
-        plt.close()
-        
-        # 显示SHAP值详情
-        st.markdown("#### 📊 特征贡献度详情")
         
         # 创建贡献度数据框
         shap_df = pd.DataFrame({
@@ -230,20 +187,123 @@ def display_shap_force_plot(explainer, features_df, feature_values, probability)
         
         # 按SHAP值绝对值排序
         shap_df['绝对SHAP值'] = abs(shap_df['SHAP值'])
-        shap_df = shap_df.sort_values('绝对SHAP值', ascending=False)
+        shap_df = shap_df.sort_values('SHAP值')
         
-        # 显示前10个最重要的特征
+        # 创建水平条形图使用Plotly
+        shap_df['颜色'] = shap_df['SHAP值'].apply(lambda x: '增加风险' if x > 0 else '降低风险')
+        
+        fig = go.Figure()
+        
+        # 添加条形
+        fig.add_trace(go.Bar(
+            y=shap_df['特征'],
+            x=shap_df['SHAP值'],
+            orientation='h',
+            marker=dict(
+                color=shap_df['SHAP值'],
+                colorscale=[[0, 'blue'], [0.5, 'white'], [1, 'red']],
+                cmin=-max(abs(shap_df['SHAP值'])),
+                cmax=max(abs(shap_df['SHAP值'])),
+                showscale=True,
+                colorbar=dict(title="SHAP值")
+            ),
+            text=shap_df['SHAP值'].round(3),
+            textposition='outside',
+            hovertemplate='<b>%{y}</b><br>SHAP值: %{x:.3f}<extra></extra>'
+        ))
+        
+        # 更新布局
+        fig.update_layout(
+            title='特征对远处转移风险预测的贡献度',
+            xaxis_title='SHAP值（对预测的贡献）',
+            yaxis_title='特征',
+            height=600,
+            showlegend=False,
+            xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor='black'),
+            plot_bgcolor='white'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 显示力图式的可视化
+        st.markdown("#### 📊 预测路径分析")
+        
+        # 创建累积SHAP值
+        shap_sorted = shap_df.sort_values('绝对SHAP值', ascending=False)
+        shap_sorted['累积SHAP'] = shap_sorted['SHAP值'].cumsum()
+        shap_sorted['预测值'] = expected_value + shap_sorted['累积SHAP']
+        
+        # 创建瀑布图
+        fig2 = go.Figure()
+        
+        # 基准值
+        fig2.add_trace(go.Scatter(
+            x=[0],
+            y=[expected_value],
+            mode='markers+text',
+            marker=dict(size=15, color='gray'),
+            text=[f'基准: {expected_value:.1%}'],
+            textposition='top center',
+            name='基准风险',
+            showlegend=False
+        ))
+        
+        # 添加每个特征的贡献
+        x_pos = 1
+        for idx, row in shap_sorted.head(10).iterrows():
+            color = 'red' if row['SHAP值'] > 0 else 'blue'
+            fig2.add_shape(
+                type="rect",
+                x0=x_pos-0.4, x1=x_pos+0.4,
+                y0=row['预测值'] - row['SHAP值'], y1=row['预测值'],
+                fillcolor=color,
+                opacity=0.5,
+                line=dict(width=0)
+            )
+            fig2.add_annotation(
+                x=x_pos,
+                y=row['预测值'],
+                text=row['特征'],
+                showarrow=False,
+                textangle=-45,
+                font=dict(size=10)
+            )
+            x_pos += 1
+        
+        # 最终预测
+        fig2.add_trace(go.Scatter(
+            x=[x_pos],
+            y=[probability],
+            mode='markers+text',
+            marker=dict(size=15, color='darkred'),
+            text=[f'最终: {probability:.1%}'],
+            textposition='top center',
+            name='最终预测',
+            showlegend=False
+        ))
+        
+        fig2.update_layout(
+            title='从基准风险到最终预测的路径',
+            xaxis=dict(showticklabels=False, title=''),
+            yaxis=dict(title='预测概率', tickformat='.0%'),
+            height=400,
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # 显示详细信息
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("**🔴 增加风险的特征（前5个）：**")
-            risk_features = shap_df[shap_df['SHAP值'] > 0].head(5)
+            risk_features = shap_df[shap_df['SHAP值'] > 0].nlargest(5, '绝对SHAP值')
             for _, row in risk_features.iterrows():
                 st.write(f"• {row['特征']}: +{row['SHAP值']:.3f}")
         
         with col2:
             st.markdown("**🔵 降低风险的特征（前5个）：**")
-            protective_features = shap_df[shap_df['SHAP值'] < 0].head(5)
+            protective_features = shap_df[shap_df['SHAP值'] < 0].nlargest(5, '绝对SHAP值')
             for _, row in protective_features.iterrows():
                 st.write(f"• {row['特征']}: {row['SHAP值']:.3f}")
         
@@ -257,69 +317,8 @@ def display_shap_force_plot(explainer, features_df, feature_values, probability)
         *注：最终概率 = sigmoid(基准值 + SHAP值总和)*
         """)
         
-        # 添加条形图
-        display_shap_summary(explainer, features_df, feature_values)
-        
     except Exception as e:
         st.error(f"SHAP可视化出错: {e}")
-
-def display_shap_summary(explainer, features_df, feature_values):
-    """显示SHAP摘要图（单个样本的条形图）"""
-    if explainer is None:
-        return
-    
-    try:
-        st.markdown("### 📈 特征重要性条形图")
-        
-        # 计算SHAP值
-        shap_values = explainer.shap_values(features_df)
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
-        
-        # 创建条形图
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        # 准备数据
-        feature_names = []
-        for feature in ALL_FEATURES:
-            if feature in feature_values:
-                value = feature_values[feature]
-                feature_names.append(f"{feature}={value}")
-            else:
-                feature_names.append(feature)
-        
-        # 创建水平条形图
-        shap_df = pd.DataFrame({
-            'Feature': feature_names,
-            'SHAP': shap_values[0]
-        })
-        shap_df = shap_df.sort_values('SHAP', key=abs)
-        
-        # 设置颜色
-        colors = ['red' if x > 0 else 'blue' for x in shap_df['SHAP']]
-        
-        # 绘制条形图
-        bars = ax.barh(shap_df['Feature'], shap_df['SHAP'], color=colors, alpha=0.7)
-        
-        # 添加数值标签
-        for bar, value in zip(bars, shap_df['SHAP']):
-            if value > 0:
-                ax.text(value + 0.001, bar.get_y() + bar.get_height()/2, 
-                       f'+{value:.3f}', va='center', fontsize=8)
-            else:
-                ax.text(value - 0.001, bar.get_y() + bar.get_height()/2, 
-                       f'{value:.3f}', va='center', ha='right', fontsize=8)
-        
-        ax.set_xlabel('SHAP值（对预测的贡献）')
-        ax.set_title('特征对远处转移风险预测的贡献度')
-        ax.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
-        plt.tight_layout()
-        
-        st.pyplot(fig)
-        plt.close()
-        
-    except Exception as e:
-        st.error(f"SHAP条形图生成出错: {e}")
 
 # Main interface
 st.title("🏥 Thyroid Cancer Distant Metastasis Prediction System")
@@ -547,7 +546,7 @@ if predict_button:
     # SHAP可视化
     if st.session_state.get('explainer') is not None:
         st.markdown("---")
-        display_shap_force_plot(
+        display_shap_force_plot_plotly(
             st.session_state.explainer, 
             features_df, 
             feature_values, 
