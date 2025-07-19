@@ -3,6 +3,8 @@ Thyroid Cancer Distant Metastasis Prediction System
 Based on Clinical+3D_ITHscore Model (19 features)
 With SHAP Visualization
 """
+import matplotlib
+matplotlib.use('Agg')
 import os
 import streamlit as st
 import pandas as pd
