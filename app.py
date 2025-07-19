@@ -1,10 +1,14 @@
 """
+在app.py文件的最开头添加（在所有import语句之前）：
+"""
+import matplotlib
+matplotlib.use('Agg')  # 设置为非交互式后端
+
+"""
 Thyroid Cancer Distant Metastasis Prediction System
 Based on Clinical+3D_ITHscore Model (19 features)
 With SHAP Visualization
 """
-import matplotlib
-matplotlib.use('Agg')
 import os
 import streamlit as st
 import pandas as pd
@@ -16,6 +20,8 @@ import json
 import shap
 import matplotlib.pyplot as plt
 from streamlit.components.v1 import html
+
+# 继续原来的代码...
 
 # Page configuration
 st.set_page_config(
