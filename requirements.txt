@@ -5,3 +5,5 @@ numpy
 xgboost
 joblib
 scikit-learn
+shap==0.42.1
+matplotlib==3.7.1
