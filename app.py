@@ -341,8 +341,124 @@ def display_shap_analysis(model, feature_values, features_df, probability):
                 xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor='black'),
                 plot_bgcolor='white'
             )
+
+# 在display_shap_analysis函数中，在条形图代码之后添加以下代码：
+
+            # 添加预测路径分析
+            st.subheader("📈 预测路径分析")
             
-            st.plotly_chart(fig, use_container_width=True)
+            # 创建数据准备
+            shap_df = pd.DataFrame({
+                'Feature': feature_names,
+                'SHAP': shap_values[0],
+                'Feature_Value': features_df.iloc[0].values
+            })
+            shap_df['abs_SHAP'] = abs(shap_df['SHAP'])
+            
+            # 选择前10个最重要的特征并按SHAP值排序
+            top_features = shap_df.nlargest(10, 'abs_SHAP').sort_values('SHAP', ascending=True)
+            
+            # 计算累积效应
+            cumulative_effects = [expected_value]
+            for shap_val in top_features['SHAP']:
+                cumulative_effects.append(cumulative_effects[-1] + shap_val)
+            
+            # 创建路径图
+            fig_path = go.Figure()
+            
+            # 添加基准线
+            fig_path.add_hline(
+                y=expected_value, 
+                line_dash="dash", 
+                line_color="gray",
+                annotation_text=f"基准风险: {expected_value:.1%}",
+                annotation_position="left"
+            )
+            
+            # 添加每个特征的贡献
+            x_positions = list(range(len(top_features) + 1))
+            feature_labels = ['基准'] + top_features['Feature'].tolist()
+            
+            # 绘制累积效应线
+            fig_path.add_trace(go.Scatter(
+                x=x_positions,
+                y=cumulative_effects,
+                mode='lines+markers+text',
+                line=dict(color='darkblue', width=3),
+                marker=dict(size=10, color='darkblue'),
+                text=[f"{val:.1%}" for val in cumulative_effects],
+                textposition="top center",
+                name='累积预测值',
+                hovertemplate='%{y:.1%}<extra></extra>'
+            ))
+            
+            # 为每个特征添加贡献条
+            for i, (idx, row) in enumerate(top_features.iterrows()):
+                color = 'rgba(255,0,0,0.3)' if row['SHAP'] > 0 else 'rgba(0,0,255,0.3)'
+                fig_path.add_shape(
+                    type="rect",
+                    x0=i+0.8, x1=i+1.2,
+                    y0=cumulative_effects[i],
+                    y1=cumulative_effects[i+1],
+                    fillcolor=color,
+                    line=dict(width=0)
+                )
+                
+                # 添加SHAP值标签
+                mid_y = (cumulative_effects[i] + cumulative_effects[i+1]) / 2
+                fig_path.add_annotation(
+                    x=i+1,
+                    y=mid_y,
+                    text=f"{row['SHAP']:+.3f}",
+                    showarrow=False,
+                    font=dict(size=10),
+                    bgcolor="white",
+                    bordercolor="black",
+                    borderwidth=1
+                )
+            
+            # 添加最终预测线
+            fig_path.add_hline(
+                y=probability, 
+                line_dash="solid", 
+                line_color="darkgreen",
+                line_width=2,
+                annotation_text=f"最终预测: {probability:.1%}",
+                annotation_position="right"
+            )
+            
+            fig_path.update_layout(
+                title="从基准风险到最终预测的累积路径",
+                xaxis=dict(
+                    tickmode='array',
+                    tickvals=x_positions,
+                    ticktext=feature_labels,
+                    tickangle=-45
+                ),
+                yaxis=dict(
+                    title="预测概率",
+                    tickformat='.0%',
+                    range=[0, 1]
+                ),
+                height=500,
+                showlegend=False,
+                plot_bgcolor='white',
+                margin=dict(b=150)  # 增加底部边距以容纳旋转的标签
+            )
+            
+            st.plotly_chart(fig_path, use_container_width=True)
+            
+            # 添加路径说明
+            st.info("""
+            **路径图说明：**
+            - 灰色虚线：基准风险（所有患者的平均风险）
+            - 蓝色线条：显示预测值如何随着每个特征的贡献而变化
+            - 红色矩形：增加风险的特征贡献
+            - 蓝色矩形：降低风险的特征贡献
+            - 绿色实线：最终预测结果
+            
+            该图展示了模型如何从基准风险（86.4%）通过各个特征的贡献，最终得出您的预测风险（60.9%）。
+            """)
             
             # 显示详细信息
             st.info(f"""
