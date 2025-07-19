@@ -9,6 +9,12 @@ font = "sans serif"
 maxUploadSize = 200
 enableCORS = false
 enableXsrfProtection = true
+# 禁用文件监控以避免inotify问题
+fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
+serverAddress = "0.0.0.0"
+
+[runner]
+fastReruns = false
