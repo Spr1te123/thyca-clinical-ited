@@ -72,7 +72,21 @@ ALL_FEATURES = [
 if 'model' not in st.session_state:
     st.session_state.model = None
     st.session_state.model_loaded = False
+if 'explainer' not in st.session_state:
     st.session_state.explainer = None
+
+@st.cache_resource
+def load_model():
+    """Load XGBoost model - demo version for now"""
+    try:
+        # 创建一个演示模型（实际使用时替换为真实模型）
+        # model = xgb.XGBClassifier()
+        # model.load_model('path_to_model.json')
+        # 返回 None 表示使用演示模式
+        return None, False
+    except Exception as e:
+        st.error(f"加载模型时出错: {str(e)}")
+        return None, False
 
 @st.cache_resource
 def load_model():
@@ -113,6 +127,7 @@ def initialize_shap_explainer(model):
         explainer = shap.TreeExplainer(model)
         return explainer
     return None
+
 def encode_categorical_features(features_dict):
     """Encode categorical features"""
     encoded = features_dict.copy()
@@ -302,6 +317,7 @@ def display_shap_with_matplotlib(explainer, features_df, feature_values, probabi
                 feature_names.append(feature)
         
         # 创建力图
+        st.subheader("力图分析")
         fig, ax = plt.subplots(figsize=(12, 6))
         shap.force_plot(
             expected_value,
@@ -312,22 +328,23 @@ def display_shap_with_matplotlib(explainer, features_df, feature_values, probabi
             show=False,
             ax=ax
         )
-        
+        plt.tight_layout()
         st.pyplot(fig)
         plt.close()
         
         # 创建瀑布图
+        st.subheader("瀑布图分析")
         fig2, ax2 = plt.subplots(figsize=(10, 8))
-        shap.plots.waterfall(
-            shap.Explanation(
-                values=shap_values[0],
-                base_values=expected_value,
-                data=features_df.iloc[0].values,
-                feature_names=feature_names
-            ),
-            show=False
+        
+        # 创建SHAP Explanation对象
+        shap_explanation = shap.Explanation(
+            values=shap_values[0],
+            base_values=expected_value,
+            data=features_df.iloc[0].values,
+            feature_names=feature_names
         )
         
+        shap.plots.waterfall(shap_explanation, show=False)
         st.pyplot(plt.gcf())
         plt.close()
         
@@ -346,14 +363,25 @@ def display_shap_with_matplotlib(explainer, features_df, feature_values, probabi
 st.title("🏥 Thyroid Cancer Distant Metastasis Prediction System")
 st.markdown("### Clinical+3D_ITHscore Model (19 Features) with SHAP Analysis")
 
+# 显示Python版本信息
+st.sidebar.markdown("### 🐍 System Info")
+import sys
+st.sidebar.info(f"Python: {sys.version.split()[0]}")
+st.sidebar.info(f"NumPy: {np.__version__}")
+st.sidebar.info(f"SHAP: {shap.__version__}")
+
 # Load model
 model, loaded = load_model()
 if loaded:
     st.success("✅ Model loaded successfully")
-    explainer = initialize_shap_explainer(model)
+    if 'explainer' not in st.session_state or st.session_state.explainer is None:
+        with st.spinner("初始化SHAP解释器..."):
+            st.session_state.explainer = create_shap_explainer(model)
+    explainer = st.session_state.explainer
 else:
     st.warning("⚠️ Using demo mode - SHAP analysis will show simulated values")
     explainer = None
+    st.session_state.explainer = None
 
 # Instructions
 with st.expander("📋 Instructions", expanded=False):
