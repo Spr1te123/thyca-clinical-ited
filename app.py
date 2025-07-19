@@ -342,6 +342,7 @@ def display_shap_analysis(model, feature_values, features_df, probability):
                 plot_bgcolor='white'
             )
 
+            st.plotly_chart(fig, use_container_width=True)
 # 在display_shap_analysis函数中，在条形图代码之后添加以下代码：
 
             # 添加预测路径分析
