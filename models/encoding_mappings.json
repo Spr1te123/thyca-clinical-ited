@@ -1,0 +1,43 @@
+{
+    "TG": {
+        "＜62.9": 0,
+        "≥62.9": 1
+    },
+    "TGAb": {
+        "＜115": 0,
+        "≥115": 1
+    },
+    "TPOAb": {
+        "＜40": 0,
+        "≥40": 1
+    },
+    "N_stage": {
+        "N0": 0,
+        "N1": 1
+    },
+    "T_stage": {
+        "T1/2": 0,
+        "T3/4": 1
+    },
+    "Infiltrated_the_adjacent_tissue": {
+        "No": 0,
+        "Yes": 1
+    },
+    "Tumor_size": {
+        "≤1": 0,
+        "＞1 and ≤2": 1,
+        "＞2": 2
+    },
+    "Multifocal": {
+        "No": 0,
+        "Yes": 1
+    },
+    "Benign_thyroid_lesions": {
+        "No": 0,
+        "Yes": 1
+    },
+    "Sex": {
+        "Female": 0,
+        "Male": 1
+    }
+}
