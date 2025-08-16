@@ -733,11 +733,11 @@ with col1:
     range_info = FEATURE_RANGES['glcm_JointEntropy']
     feature_values['glcm_JointEntropy'] = st.number_input(
         "GLCM联合熵",
-        min_value=range_info['min'],
-        max_value=range_info['max'],
-        value=range_info['default'],
-        step=range_info['step'],
-        format=range_info['format'],
+        min_value=float(range_info['min']),
+        max_value=float(range_info['max']),
+        value=float(range_info['default']),
+        step=float(range_info['step']),
+        format=range_info.get('format', '%.2f'),
         help=range_info['help']
     )
 
@@ -745,11 +745,11 @@ with col2:
     range_info = FEATURE_RANGES['glrlm_GrayLevelNonUniformityNormalized']
     feature_values['glrlm_GrayLevelNonUniformityNormalized'] = st.number_input(
         "GLRLM灰度非均匀性",
-        min_value=range_info['min'],
-        max_value=range_info['max'],
-        value=range_info['default'],
-        step=range_info['step'],
-        format=range_info['format'],
+        min_value=float(range_info['min']),
+        max_value=float(range_info['max']),
+        value=float(range_info['default']),
+        step=float(range_info['step']),
+        format=range_info.get('format', '%.3f'),
         help=range_info['help']
     )
 
@@ -757,11 +757,11 @@ with col3:
     range_info = FEATURE_RANGES['shape_SurfaceArea']
     feature_values['shape_SurfaceArea'] = st.number_input(
         "形状表面积",
-        min_value=range_info['min'],
-        max_value=range_info['max'],
-        value=range_info['default'],
-        step=range_info['step'],
-        format=range_info['format'],
+        min_value=float(range_info['min']),
+        max_value=float(range_info['max']),
+        value=float(range_info['default']),
+        step=float(range_info['step']),
+        format=range_info.get('format', '%.1f'),
         help=range_info['help']
     )
 
@@ -776,11 +776,11 @@ with col1:
     range_info = FEATURE_RANGES['iTED_firstorder_Energy']
     feature_values['iTED_firstorder_Energy'] = st.number_input(
         "iTED能量",
-        min_value=range_info['min'],
-        max_value=range_info['max'],
-        value=range_info['default'],
-        step=range_info['step'],
-        format=range_info['format'],
+        min_value=float(range_info['min']),
+        max_value=float(range_info['max']),
+        value=float(range_info['default']),
+        step=float(range_info['step']),
+        format=range_info.get('format', '%.0f'),
         help=range_info['help']
     )
 
@@ -788,11 +788,11 @@ with col2:
     range_info = FEATURE_RANGES['iTED_firstorder_Variance']
     feature_values['iTED_firstorder_Variance'] = st.number_input(
         "iTED方差",
-        min_value=range_info['min'],
-        max_value=range_info['max'],
-        value=range_info['default'],
-        step=range_info['step'],
-        format=range_info['format'],
+        min_value=float(range_info['min']),
+        max_value=float(range_info['max']),
+        value=float(range_info['default']),
+        step=float(range_info['step']),
+        format=range_info.get('format', '%.1f'),
         help=range_info['help']
     )
 
