@@ -861,15 +861,41 @@ with col2:
 if predict_button:
     # 编码分类特征
     encoded_features = encode_categorical_features(feature_values)
-
+    
     if encoded_features:
-        # 创建特征DataFrame
-        features_df = pd.DataFrame([encoded_features])[MODEL_CONFIG['features']]
-
+        # 严格按照模型训练时的顺序创建DataFrame
+        feature_order = [
+            "Multifocal",
+            "T_stage",
+            "glcm_JointEntropy",
+            "glrlm_GrayLevelNonUniformityNormalized",
+            "shape_SurfaceArea",
+            "iTED_firstorder_Energy",
+            "iTED_firstorder_Variance"
+        ]
+        
+        # 创建有序的特征列表
+        features_list = []
+        for feature in feature_order:
+            if feature in encoded_features:
+                features_list.append(encoded_features[feature])
+            else:
+                st.error(f"缺少特征: {feature}")
+                features_list.append(0.0)  # 默认值
+        
+        # 创建DataFrame
+        features_df = pd.DataFrame([features_list], columns=feature_order)
+        
+        # 显示调试信息（可以在调试后删除）
+        with st.expander("调试信息"):
+            st.write("编码后的特征:", encoded_features)
+            st.write("DataFrame内容:", features_df)
+            st.write("DataFrame值:", features_df.values)
+        
         # 进行预测
         with st.spinner("分析数据中..."):
             probability = predict_risk(model, features_df)
-
+            
         if probability is not None:
             # 显示结果
             st.markdown("---")
