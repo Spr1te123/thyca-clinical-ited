@@ -211,37 +211,51 @@ def load_model():
 def encode_categorical_features(features_dict):
     """编码分类特征"""
     encoded = {}
-
+    
     for feature, value in features_dict.items():
         if feature in ENCODING_MAPPINGS:
             if value in ENCODING_MAPPINGS[feature]:
-                encoded[feature] = ENCODING_MAPPINGS[feature][value]
+                encoded[feature] = float(ENCODING_MAPPINGS[feature][value])  # 转为float
             else:
                 st.error(f"未知的{feature}值: {value}")
                 return None
         else:
-            encoded[feature] = value
-
+            # 确保数值特征也是float
+            encoded[feature] = float(value)
+    
     return encoded
 
 def predict_risk(booster, features_df):
     """使用模型预测"""
     if booster is not None:
         try:
-            # 直接使用numpy数组进行预测，避免列名问题
-            features_array = features_df.values
-            probability = booster.predict(features_array, num_iteration=booster.best_iteration)[0]
-            return probability
+            # 确保数据是正确的格式
+            if isinstance(features_df, pd.DataFrame):
+                # 转换为numpy数组，确保是2D的 (1, n_features)
+                features_array = features_df.values.astype(np.float32)
+            else:
+                features_array = np.array(features_df).astype(np.float32)
+            
+            # 确保是2D数组
+            if len(features_array.shape) == 1:
+                features_array = features_array.reshape(1, -1)
+            
+            # 使用LightGBM预测
+            probability = booster.predict(features_array, num_iteration=booster.best_iteration)
+            
+            # 处理输出格式
+            if isinstance(probability, np.ndarray):
+                if len(probability.shape) > 0:
+                    probability = probability[0]
+            
+            return float(probability)
+            
         except Exception as e:
-            # 如果上面失败，尝试重命名列为Column_0, Column_1等
-            try:
-                features_df_renamed = features_df.copy()
-                features_df_renamed.columns = [f'Column_{i}' for i in range(len(features_df.columns))]
-                probability = booster.predict(features_df_renamed.values, num_iteration=booster.best_iteration)[0]
-                return probability
-            except Exception as e2:
-                st.error(f"预测失败: {str(e)}, 备用方法也失败: {str(e2)}")
-                return None
+            st.error(f"预测错误: {str(e)}")
+            st.write("调试信息:")
+            st.write(f"输入形状: {features_array.shape}")
+            st.write(f"输入值: {features_array}")
+            return None
     else:
         # 演示模式 - 基于特征值的简单规则计算
         risk_score = 0.135  # 基线风险 (13.5% M1患病率)
@@ -275,7 +289,7 @@ def predict_risk(booster, features_df):
         risk_score += min(iTED_contribution, 0.10)
         
         # 确保概率在0-1之间
-        return min(max(risk_score, 0.0), 1.0)
+        return 0.15
 
 def display_shap_plotly(feature_values, features_df, probability):
     """显示SHAP分析（演示模式）"""
@@ -393,51 +407,69 @@ def display_shap_plotly(feature_values, features_df, probability):
 def display_shap_analysis(booster, feature_values, features_df, probability):
     """显示SHAP分析 - 支持真实模型和演示模式"""
     if booster is not None:
-        # 真实模型 - 使用真实SHAP分析
         try:
             st.markdown("### 🎯 SHAP特征贡献分析")
-
+            
             # 创建SHAP解释器
             with st.spinner("计算SHAP值..."):
                 explainer = shap.TreeExplainer(booster)
-                shap_values = explainer.shap_values(features_df)
-
+                
+                # 确保输入格式正确
+                if isinstance(features_df, pd.DataFrame):
+                    shap_input = features_df.values.astype(np.float32)
+                else:
+                    shap_input = np.array(features_df).astype(np.float32)
+                
+                # 确保是2D数组
+                if len(shap_input.shape) == 1:
+                    shap_input = shap_input.reshape(1, -1)
+                
+                # 计算SHAP值
+                shap_values = explainer.shap_values(shap_input)
+                
+                # 处理SHAP值格式
+                if isinstance(shap_values, list):
+                    shap_values = shap_values[0]
+                
+                # 确保是1D数组用于单个预测
+                if len(shap_values.shape) > 1:
+                    shap_values = shap_values[0]
+                
                 # 获取期望值
                 expected_value = explainer.expected_value
                 if isinstance(expected_value, list):
                     expected_value = expected_value[0]
-
+            
             # 创建特征名称
             feature_names = []
             for i, feature in enumerate(MODEL_CONFIG['features']):
-                value = features_df.iloc[0, i]
-                if feature in ENCODING_MAPPINGS:
-                    for k, v in ENCODING_MAPPINGS[feature].items():
-                        if v == value:
-                            feature_names.append(f"{feature}={k}")
-                            break
-                    else:
-                        feature_names.append(f"{feature}={value}")
+                value = features_df.iloc[0, i] if isinstance(features_df, pd.DataFrame) else shap_input[0, i]
+                
+                if feature == 'Multifocal':
+                    feature_names.append(f"{feature}={'是' if value == 1 else '否'}")
+                elif feature == 'T_stage':
+                    t_stages = ['T1', 'T2', 'T3', 'T4']
+                    feature_names.append(f"{feature}={t_stages[int(value)]}")
                 else:
                     feature_names.append(f"{feature}={value:.3f}")
-
+            
             # 显示SHAP分析结果
             st.subheader("SHAP分析结果")
-
+            
             # 显示基本信息
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("基线风险", f"{expected_value:.1%}")
             with col2:
-                st.metric("SHAP贡献", f"{shap_values[0].sum():.3f}")
+                st.metric("SHAP贡献", f"{shap_values.sum():.3f}")
             with col3:
                 st.metric("最终预测", f"{probability:.1%}")
-
+            
             # 创建SHAP数据框
             shap_df = pd.DataFrame({
                 'Feature': feature_names,
-                'SHAP': shap_values[0] if len(shap_values.shape) == 1 else shap_values,
-                'Feature_Value': features_df.iloc[0].values
+                'SHAP': shap_values,
+                'Feature_Value': shap_input[0]
             })
             shap_df['abs_SHAP'] = abs(shap_df['SHAP'])
             shap_df = shap_df.sort_values('SHAP')
@@ -610,6 +642,8 @@ def display_shap_analysis(booster, feature_values, features_df, probability):
 
         except Exception as e:
             st.error(f"SHAP分析错误: {str(e)}")
+            import traceback
+            st.error(f"详细错误:\n{traceback.format_exc()}")
             # 回退到演示模式
             display_shap_plotly(feature_values, features_df, probability)
     else:
