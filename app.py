@@ -375,15 +375,32 @@ def display_shap_analysis(booster, feature_values, features_df, probability):
         try:
             st.markdown("### 🎯 SHAP特征贡献分析")
 
-            # 创建SHAP解释器
+                        # 创建SHAP解释器
             with st.spinner("计算SHAP值..."):
                 explainer = shap.TreeExplainer(booster)
-                shap_values = explainer.shap_values(features_df)
 
-                # 获取期望值
+                # 1) 先算原始 shap 值（可能是 ndarray 或 list[ndarray]）
+                shap_values_raw = explainer.shap_values(features_df)
+
+                # 2) 规范化 expected_value -> float
                 expected_value = explainer.expected_value
-                if isinstance(expected_value, list):
-                    expected_value = expected_value[0]
+                if isinstance(expected_value, (list, tuple, np.ndarray)):
+                    expected_value = float(np.array(expected_value).ravel()[0])
+                else:
+                    expected_value = float(expected_value)
+
+                # 3) 规范化 shap_values -> 一维 (n_features,)
+                if isinstance(shap_values_raw, list):          # 多分类时常见
+                    shap_values = np.array(shap_values_raw[0])  # 默认取第0类；如需别的类别可改索引
+                else:
+                    shap_values = np.array(shap_values_raw)
+
+                if shap_values.ndim == 2:   # 形如 (1, n_features)
+                    shap_values = shap_values[0]
+                elif shap_values.ndim == 1:
+                    pass
+                else:
+                    raise ValueError(f"意外的 SHAP 值维度：{shap_values.shape}")
 
             # 创建特征名称
             feature_names = []
@@ -407,14 +424,14 @@ def display_shap_analysis(booster, feature_values, features_df, probability):
             with col1:
                 st.metric("基线风险", f"{expected_value:.1%}")
             with col2:
-                st.metric("SHAP贡献", f"{shap_values[0].sum():.3f}")
+                st.metric("SHAP贡献", f"{shap_values.sum():.3f}")
             with col3:
                 st.metric("最终预测", f"{probability:.1%}")
 
             # 创建SHAP数据框
             shap_df = pd.DataFrame({
                 'Feature': feature_names,
-                'SHAP': shap_values[0] if len(shap_values.shape) == 1 else shap_values,
+                'SHAP': shap_values,
                 'Feature_Value': features_df.iloc[0].values
             })
             shap_df['abs_SHAP'] = abs(shap_df['SHAP'])
@@ -559,7 +576,7 @@ def display_shap_analysis(booster, feature_values, features_df, probability):
             st.info(f"""
             **SHAP分析总结：**
             - 基线风险（平均患者）: {expected_value:.1%}
-            - 总SHAP值: {shap_values[0].sum():.3f}
+            - 总SHAP值: {shap_values.sum():.3f}
             - 最终预测概率: {probability:.1%}
             
             *注：这是基于真实模型的SHAP分析*
