@@ -228,30 +228,52 @@ def predict_risk(booster, features_df):
     """使用模型预测"""
     if booster is not None:
         try:
-            probability = booster.predict(features_df, num_iteration=booster.best_iteration)[0]
+            # 直接使用numpy数组进行预测，避免列名问题
+            features_array = features_df.values
+            probability = booster.predict(features_array, num_iteration=booster.best_iteration)[0]
             return probability
         except Exception as e:
-            st.error(f"预测失败: {str(e)}")
-            return None
+            # 如果上面失败，尝试重命名列为Column_0, Column_1等
+            try:
+                features_df_renamed = features_df.copy()
+                features_df_renamed.columns = [f'Column_{i}' for i in range(len(features_df.columns))]
+                probability = booster.predict(features_df_renamed.values, num_iteration=booster.best_iteration)[0]
+                return probability
+            except Exception as e2:
+                st.error(f"预测失败: {str(e)}, 备用方法也失败: {str(e2)}")
+                return None
     else:
-        # 演示模式 - 简单的规则计算
+        # 演示模式 - 基于特征值的简单规则计算
         risk_score = 0.135  # 基线风险 (13.5% M1患病率)
-
-        # 根据特征值调整风险
-        if features_df['Multifocal'].iloc[0] == 1:
+        
+        # 使用iloc访问，按照正确的列顺序
+        # Column_0: Multifocal
+        if features_df.iloc[0, 0] == 1:  # Multifocal = Yes
             risk_score += 0.10
-        if features_df['T_stage'].iloc[0] >= 2:  # T3 or T4
+        
+        # Column_1: T_stage
+        if features_df.iloc[0, 1] >= 2:  # T_stage >= T3 (T3=2, T4=3)
             risk_score += 0.15
-        if features_df['shape_SurfaceArea'].iloc[0] > 5000:
+        
+        # Column_4: shape_SurfaceArea
+        if features_df.iloc[0, 4] > 5000:
             risk_score += 0.08
-        if features_df['glcm_JointEntropy'].iloc[0] > 6:
+        
+        # Column_2: glcm_JointEntropy
+        if features_df.iloc[0, 2] > 6:
             risk_score += 0.05
-
+        
+        # Column_3: glrlm_GrayLevelNonUniformityNormalized
+        if features_df.iloc[0, 3] > 0.3:
+            risk_score += 0.03
+        
         # iTED特征贡献
-        iTED_sum = features_df['iTED_firstorder_Energy'].iloc[0] / 1000000 + \
-                   features_df['iTED_firstorder_Variance'].iloc[0] / 1000
-        risk_score += min(iTED_sum * 0.05, 0.10)
-
+        # Column_5: iTED_firstorder_Energy, Column_6: iTED_firstorder_Variance
+        iTED_energy = features_df.iloc[0, 5] / 1000000  # 归一化
+        iTED_variance = features_df.iloc[0, 6] / 1000   # 归一化
+        iTED_contribution = (iTED_energy + iTED_variance) * 0.05
+        risk_score += min(iTED_contribution, 0.10)
+        
         # 确保概率在0-1之间
         return min(max(risk_score, 0.0), 1.0)
 
