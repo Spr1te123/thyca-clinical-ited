@@ -1,0 +1,16 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    # 每6小时运行一次（UTC时间）
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit App
+        run: |
+          curl -s -o /dev/null -w "%{http_code}\n" https://thyca-clinical-ited-v28bd4egqz8eaudefchcpv.streamlit.app/
+          echo "App pinged successfully at $(date)"
